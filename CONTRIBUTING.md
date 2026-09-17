@@ -1,8 +1,8 @@
-# 작업 규약 — calmdesk-voice
+# 작업 규약 — jinsang-stop-voice
 
 파이썬 `음성 서비스`(faster-whisper 전사 · MeloTTS 합성)와 `추론 서비스`(llama.cpp `llama-server`) 실행 설정. 둘 다 Spring만 호출한다.
 
-제품·도메인 문서(용어집·ADR·PRD)는 이 저장소가 아니라 [jinsang-stop/calmdesk](https://github.com/jinsang-stop/calmdesk)에 있다.
+제품·도메인 문서(용어집·ADR·PRD)는 이 저장소가 아니라 [jinsang-stop/jinsang-stop](https://github.com/jinsang-stop/jinsang-stop)에 있다.
 클래스·필드·API·DB 이름은 그 `CONTEXT.md`의 용어를 그대로 쓰고, `_Avoid_`로 적힌 동의어를 쓰지 않는다.
 ADR과 어긋나는 구현이 필요해 보이면 코드로 덮지 말고 이슈에 먼저 올린다.
 
@@ -29,7 +29,7 @@ ADR과 어긋나는 구현이 필요해 보이면 코드로 덮지 말고 이슈
 - 제목: `[Label] {이슈번호} {목표}` — 예: `[Feat] 3 공식 카드 목록 조회 API`
 - 본문은 이슈 템플릿(목적 / 범위 / 작업 내용 / 완료 조건) 그대로 쓴다. **섹션을 더하거나 빼지 않는다.**
 - 작업 내용과 완료 조건은 체크박스로, 완료 조건은 눈으로 확인 가능한 문장으로 쓴다.
-- 슬라이스에서 나온 작업은 `jinsang-stop/calmdesk`의 `[Slice]` 이슈에 하위 이슈로 연결돼 있다. 공통 계약(필드·상태·오류 전달)은 슬라이스 이슈가 정본이다.
+- 슬라이스에서 나온 작업은 `jinsang-stop/jinsang-stop`의 `[Slice]` 이슈에 하위 이슈로 연결돼 있다. 공통 계약(필드·상태·오류 전달)은 슬라이스 이슈가 정본이다.
 
 ## 브랜치
 
