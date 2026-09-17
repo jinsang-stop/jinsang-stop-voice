@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# 모델 가중치 — 커밋하지 않는다
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# 환경변수
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# 음성 임시 파일 — ADR-0006에 따라 보관하지 않는다
+*.wav
+*.mp3
+*.webm
