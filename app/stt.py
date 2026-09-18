@@ -14,6 +14,7 @@ import threading
 import time
 from dataclasses import dataclass
 
+import av
 from faster_whisper import WhisperModel
 
 from app.config import Settings
@@ -26,7 +27,21 @@ TARGET_LANGUAGE = "ko"
 
 
 class AudioDecodeError(Exception):
-    """받은 바이트를 오디오로 디코딩하지 못했을 때."""
+    """받은 바이트를 오디오로 디코딩하지 못했을 때 — 보낸 쪽 문제다.
+
+    PyAV가 던지는 `av.FFmpegError` 계열만 여기로 온다. 확인한 바로는 쓰레기 바이트와
+    빈 바이트 모두 `av.error.InvalidDataError`(→ `av.FFmpegError` 하위)로 나온다.
+    """
+
+
+class TranscriptionFailedError(Exception):
+    """오디오는 멀쩡한데 전사가 실패했을 때 — 이쪽 문제다.
+
+    GPU 메모리 부족처럼 환경에서 비롯한 실패가 여기 온다. `음성 서비스`와
+    `추론 서비스`가 시연 장비의 GPU를 나눠 쓰므로(ADR-0009) 현실적인 상황이다.
+    이것을 디코딩 실패와 같은 코드로 내려보내면 백엔드가 사용자에게 "다시 말해 달라"를
+    띄우고, 사용자는 같은 말을 반복하는데 원인은 GPU에 있게 된다.
+    """
 
 
 @dataclass
@@ -101,8 +116,13 @@ class Transcriber:
                 # faster-whisper의 전사는 지연 평가라 여기서 실제로 돌아간다.
                 text = "".join(segment.text for segment in segments).strip()
                 audio_seconds = float(info.duration)
-            except Exception as exc:  # noqa: BLE001 — 디코딩 실패를 호출자에게 코드로 전달한다
+            except av.FFmpegError as exc:
+                # 보낸 오디오를 열지 못한 것이다. 형식이 아니거나 깨졌다.
                 raise AudioDecodeError(str(exc)) from exc
+            except Exception as exc:  # noqa: BLE001 — 남은 전부는 이쪽 장애로 취급한다
+                # 오디오 탓으로 돌리지 않는다. GPU 메모리 부족·모델 비정상 등이 여기 온다.
+                logger.exception("전사가 실패했다 — 오디오 문제가 아니다")
+                raise TranscriptionFailedError(str(exc)) from exc
             finally:
                 # 버퍼를 즉시 비운다. ADR-0006의 "전사 직후 폐기"를 코드로 지킨다.
                 buffer.close()
