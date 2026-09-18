@@ -1,0 +1,12 @@
+# 진상 멈춰 `음성 서비스` 의존성
+# 설치: pip install -r requirements.txt
+# 버전은 이 저장소에서 실제로 설치해 동작을 확인한 것으로 고정한다.
+# (확인 환경: Windows 11 · Python 3.13.2 · CPU int8)
+
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+faster-whisper==1.2.1
+
+# 개발·검증용
+pytest==9.1.1
+httpx==0.28.1
