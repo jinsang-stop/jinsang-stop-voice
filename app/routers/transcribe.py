@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from app.config import Settings
 from app.deps import get_settings, get_transcriber
 from app.schemas import ErrorResponse, TranscriptionResponse
-from app.stt import AudioDecodeError, Transcriber
+from app.stt import AudioDecodeError, Transcriber, TranscriptionFailedError
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,11 @@ def _error(status_code: int, error_code: str, message: str) -> JSONResponse:
         },
         status.HTTP_503_SERVICE_UNAVAILABLE: {
             "model": ErrorResponse,
-            "description": "아직 모델이 올라오지 않았다",
+            "description": (
+                "모델이 아직 올라오지 않았거나(`STT_NOT_READY`),"
+                " 오디오는 멀쩡한데 전사가 실패했다(`STT_FAILED`)."
+                " 둘 다 이쪽 환경 문제이므로 백엔드는 훈련 환경 미준비로 다룬다"
+            ),
         },
     },
     openapi_extra={
@@ -86,20 +90,44 @@ async def transcribe(
             "faster-whisper 모델이 아직 로딩되지 않았다.",
         )
 
-    audio_bytes = await request.body()
+    # 상한을 **본문을 다 받기 전에** 적용한다. `await request.body()`로 통째로 읽은 뒤
+    # 길이를 재면 이미 메모리에 올라온 다음이라, 상한이 막으려던 메모리 고갈을 못 막는다.
+    # 먼저 Content-Length를 보고, 없거나 못 믿을 때는 받으면서 누적 합계로 끊는다.
+    선언된_크기 = request.headers.get("content-length")
+    if 선언된_크기 is not None:
+        try:
+            if int(선언된_크기) > settings.max_audio_bytes:
+                return _error(
+                    status.HTTP_413_CONTENT_TOO_LARGE,
+                    "AUDIO_TOO_LARGE",
+                    f"오디오가 {선언된_크기}바이트로 상한 {settings.max_audio_bytes}바이트를 넘었다.",
+                )
+        except ValueError:
+            # 숫자가 아닌 Content-Length는 못 믿는다. 아래 누적 합계가 막는다.
+            pass
+
+    조각들: list[bytes] = []
+    받은_크기 = 0
+    async for 조각 in request.stream():
+        받은_크기 += len(조각)
+        if 받은_크기 > settings.max_audio_bytes:
+            # 더 읽지 않고 여기서 끊는다. 남은 본문을 메모리에 쌓지 않는 것이 요점이다.
+            조각들.clear()
+            return _error(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "AUDIO_TOO_LARGE",
+                f"오디오가 상한 {settings.max_audio_bytes}바이트를 넘어 받는 중에 끊었다.",
+            )
+        조각들.append(조각)
+
+    audio_bytes = b"".join(조각들)
+    조각들.clear()
 
     if not audio_bytes:
         return _error(
             status.HTTP_400_BAD_REQUEST,
             "EMPTY_REQUEST_BODY",
             "요청 본문에 오디오가 없다.",
-        )
-
-    if len(audio_bytes) > settings.max_audio_bytes:
-        return _error(
-            status.HTTP_413_CONTENT_TOO_LARGE,
-            "AUDIO_TOO_LARGE",
-            f"오디오가 {len(audio_bytes)}바이트로 상한 {settings.max_audio_bytes}바이트를 넘었다.",
         )
 
     try:
@@ -112,6 +140,14 @@ async def transcribe(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "AUDIO_DECODE_FAILED",
             f"오디오를 디코딩하지 못했다: {exc}",
+        )
+    except TranscriptionFailedError as exc:
+        # 오디오 탓이 아니다. 422로 내려보내면 백엔드가 "다시 말해 달라"로 오진한다.
+        logger.error("전사 실패 — 환경 문제다: %s", exc)
+        return _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "STT_FAILED",
+            f"오디오는 받았지만 전사에 실패했다: {exc}",
         )
 
     logger.info(

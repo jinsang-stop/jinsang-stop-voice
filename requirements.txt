@@ -7,6 +7,10 @@ fastapi==0.141.1
 uvicorn[standard]==0.53.0
 faster-whisper==1.2.1
 
+# faster-whisper가 끌고 오지만, 디코딩 실패를 다른 오류와 가려내려고
+# app/stt.py가 av.FFmpegError를 직접 잡으므로 여기에도 명시해 고정한다.
+av==18.1.0
+
 # 개발·검증용
 pytest==9.1.1
 httpx==0.28.1
