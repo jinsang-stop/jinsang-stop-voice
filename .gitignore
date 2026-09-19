@@ -11,6 +11,9 @@ models/
 *.bin
 *.safetensors
 
+# llama-server 실행 파일 — 내려받는 절차를 README에 적는다
+tools/
+
 # 환경변수
 .env
 .env.*
