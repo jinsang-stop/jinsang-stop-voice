@@ -11,12 +11,19 @@ from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
-    """헬스 체크 응답. Spring이 세션 시작 전에 훈련 환경 준비 여부를 확인할 때 쓴다."""
+    """헬스 체크 응답. Spring이 세션 시작 전에 훈련 환경 준비 여부를 확인할 때 쓴다.
 
-    status: str = Field(description="모델까지 올라와 요청을 받을 수 있으면 'ok'")
+    전사와 합성 **둘 다** 올라왔을 때만 `status`가 'ok'다. 하나라도 준비되지 않으면
+    `훈련 세션`을 온전히 진행할 수 없으므로 200을 주지 않는다(슬라이스 #4·#5).
+    """
+
+    status: str = Field(description="전사와 합성이 모두 올라와 요청을 받을 수 있으면 'ok'")
     stt_model: str = Field(description="올라온 faster-whisper 모델 크기")
     stt_device: str = Field(description="추론 장치 — 'cuda' 또는 'cpu'")
     stt_compute_type: str = Field(description="양자화 방식 — 예: float16, int8")
+    tts_language: str = Field(description="올라온 MeloTTS 언어 — 'KR'")
+    tts_device: str = Field(description="합성 장치. ADR-0009에 따라 항상 'cpu'")
+    tts_sample_rate: int = Field(description="합성 오디오의 샘플레이트(Hz)")
 
     model_config = {
         "json_schema_extra": {
@@ -26,7 +33,37 @@ class HealthResponse(BaseModel):
                     "stt_model": "small",
                     "stt_device": "cuda",
                     "stt_compute_type": "float16",
+                    "tts_language": "KR",
+                    "tts_device": "cpu",
+                    "tts_sample_rate": 44100,
                 }
+            ]
+        }
+    }
+
+
+class SynthesisRequest(BaseModel):
+    """합성 요청.
+
+    `민원인` 대사를 음성으로 바꾼다. 이 서비스는 대사를 만들지도, 검사하지도 않는다 —
+    금칙 표현과 한국어 여부를 보는 `출력 검사`는 백엔드 몫이다(ADR-0009).
+    여기 도착한 텍스트는 이미 검사를 통과한 것으로 본다.
+    """
+
+    text: str = Field(description="합성할 한국어 텍스트")
+    speed: float | None = Field(
+        default=None,
+        description=(
+            "말하기 속도. 생략하면 `JINSANGSTOP_TTS_SPEED`(기본 1.0)를 쓴다."
+            " MeloTTS가 노출하는 조절 값은 speed와 speaker_id뿐이므로 `민원인`의 분노 어조는"
+            " 음성이 아니라 대사 자체로 표현한다(ADR-0008)"
+        ),
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"text": "환불은 영수증이 있어야 가능합니다.", "speed": 1.0}
             ]
         }
     }
