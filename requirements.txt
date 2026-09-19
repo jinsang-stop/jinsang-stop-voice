@@ -11,6 +11,40 @@ faster-whisper==1.2.1
 # app/stt.py가 av.FFmpegError를 직접 잡으므로 여기에도 명시해 고정한다.
 av==18.1.0
 
+# --- TTS(MeloTTS) ---
+# MeloTTS 0.1.2의 setup.py는 numpy==1.26.4 · transformers==4.27.4처럼 오래된 버전을 못박아
+# 두었는데, 그 조합은 Python 3.13용 휠이 없어 소스 빌드로 떨어지고 STT가 쓰는 numpy 2.x도
+# 끌어내린다. 그래서 `--no-deps`로 코드만 받고 실제로 import 되는 것만 최신 버전으로 고정한다.
+#   pip install --no-deps git+https://github.com/myshell-ai/MeloTTS.git
+# (이 줄은 pip가 해석하지 못하므로 README의 설치 절차를 따른다)
+torch==2.14.0
+torchaudio==2.11.0
+librosa==1.0.0
+soundfile==0.14.0
+transformers==5.17.0
+txtsplit==1.0.0
+cached_path==1.8.10
+num2words==0.5.14
+anyascii==0.3.3
+cn2an==0.5.24
+pypinyin==0.55.0
+jieba==0.42.1
+gruut==2.4.0
+g2p-en==2.1.0
+
+# 일본어 처리 — 한국어만 쓰지만 melo가 import 시점에 끌어온다
+mecab-python3==1.0.12
+unidic-lite==1.0.8
+pykakasi==2.3.0
+fugashi==1.5.2
+
+# 한국어 G2P. g2pkk는 윈도에서 eunjeon을 찾지만 Python 3.6용 휠까지만 있어 쓸 수 없다.
+# 같은 mecab-ko 사전을 쓰는 mecab-ko로 갈아끼운다(app/korean_g2p.py).
+g2pkk==0.1.2
+jamo==0.4.1
+mecab-ko==1.0.2
+mecab-ko-dic==1.0.0
+
 # 개발·검증용
 pytest==9.1.1
 httpx==0.28.1
