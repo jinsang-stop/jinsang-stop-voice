@@ -9,6 +9,7 @@ from fastapi import Request
 
 from app.config import Settings
 from app.stt import Transcriber
+from app.tts import Synthesizer
 
 
 def get_settings(request: Request) -> Settings:
@@ -19,3 +20,8 @@ def get_settings(request: Request) -> Settings:
 def get_transcriber(request: Request) -> Transcriber:
     """기동 시 올려둔 전사기를 돌려준다."""
     return request.app.state.transcriber
+
+
+def get_synthesizer(request: Request) -> Synthesizer:
+    """기동 시 올려둔 합성기를 돌려준다."""
+    return request.app.state.synthesizer

@@ -13,8 +13,9 @@ import uvicorn
 from fastapi import FastAPI
 
 from app.config import load_settings
-from app.routers import health, transcribe
+from app.routers import health, synthesize, transcribe
 from app.stt import Transcriber
+from app.tts import Synthesizer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,18 +38,32 @@ async def lifespan(app: FastAPI):
     """
     settings = load_settings()
     transcriber = Transcriber(settings)
+    synthesizer = Synthesizer(settings)
 
     app.state.settings = settings
     app.state.transcriber = transcriber
+    app.state.synthesizer = synthesizer
 
+    # 전사와 합성을 따로 감싼다. 하나가 실패해도 다른 하나는 올라오고, /health가
+    # 어느 쪽이 준비되지 않았는지 오류 코드로 알려준다.
     try:
         transcriber.load()
-        logger.info("음성 서비스 준비 완료 — http://%s:%d", settings.host, settings.port)
     except Exception:  # noqa: BLE001 — 기동 실패를 헬스 체크로 알리고 계속 뜬다
         logger.exception(
-            "모델 로딩 실패 — 서비스는 떴지만 /health가 503을 준다."
+            "전사 모델 로딩 실패 — /health가 STT_NOT_READY로 503을 준다."
             " 가중치를 내려받을 수 있는지와 compute_type이 장치에 맞는지 확인하라"
         )
+
+    try:
+        synthesizer.load()
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "합성 모델 로딩 실패 — /health가 TTS_NOT_READY로 503을 준다."
+            " 윈도에서는 mecab-ko가 설치돼 있는지 먼저 확인하라"
+        )
+
+    if transcriber.is_ready and synthesizer.is_ready:
+        logger.info("음성 서비스 준비 완료 — http://%s:%d", settings.host, settings.port)
 
     yield
 
@@ -60,14 +75,18 @@ app = FastAPI(
     version="0.1.0",
     description=(
         "악성 민원 응대 훈련 서비스 「진상 멈춰」의 `음성 서비스`.\n\n"
-        "한국어 음성을 텍스트로 전사한다. Spring 백엔드만 호출하며 외부에 노출하지 않는다"
-        " (ADR-0008). 받은 오디오는 디스크에 쓰지 않고 메모리에서만 다룬다(ADR-0006)."
+        "한국어 음성을 텍스트로 전사하고(faster-whisper), `민원인` 대사를 음성으로"
+        " 합성한다(MeloTTS). Spring 백엔드만 호출하며 외부에 노출하지 않는다(ADR-0008).\n\n"
+        "주고받는 오디오는 디스크에 쓰지 않고 메모리에서만 다룬다(ADR-0006).\n\n"
+        "`민원인` 대사 생성과 `태도 3축` 채점은 여기서 하지 않는다 — 그건 `추론 서비스`와"
+        " 백엔드 몫이다."
     ),
     lifespan=lifespan,
 )
 
 app.include_router(health.router)
 app.include_router(transcribe.router)
+app.include_router(synthesize.router)
 
 
 def main() -> None:
