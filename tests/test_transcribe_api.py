@@ -10,38 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings, load_settings
-from app.deps import get_settings, get_transcriber
+from app.deps import get_settings, get_synthesizer, get_transcriber
 from app.main import app
-from app.stt import (
-    AudioDecodeError,
-    Transcriber,
-    TranscriptionFailedError,
-    TranscriptionResult,
-)
-
-
-class StubTranscriber:
-    """모델 없이 라우터를 시험하기 위한 대역."""
-
-    def __init__(
-        self,
-        *,
-        ready: bool = True,
-        raises: BaseException | None = None,
-        text: str = "안녕하세요",
-    ) -> None:
-        self.is_ready = ready
-        self._raises = raises
-        self._text = text
-        self.received: bytes | None = None
-
-    def transcribe(self, audio_bytes: bytes) -> TranscriptionResult:
-        self.received = audio_bytes
-        if self._raises is not None:
-            raise self._raises
-        return TranscriptionResult(
-            text=self._text, audio_seconds=1.5, processing_seconds=0.3
-        )
+from app.stt import AudioDecodeError, Transcriber, TranscriptionFailedError
+from app.tts import Synthesizer
+from tests.stubs import StubSynthesizer, StubTranscriber
 
 
 def test_모델_로딩이_실패해도_서비스는_뜨고_헬스가_503을_준다(monkeypatch):
@@ -54,7 +27,13 @@ def test_모델_로딩이_실패해도_서비스는_뜨고_헬스가_503을_준�
     def 터지는_로딩(self):
         raise ValueError("Invalid compute type: nonsense-type")
 
+    def 아무것도_안_하는_로딩(self):
+        # 합성 모델을 실제로 올리면 테스트가 수십 초 걸린다. 여기서 보려는 것은
+        # 전사 로딩이 실패해도 서비스가 뜨는지이므로 합성은 건드리지 않는다.
+        return None
+
     monkeypatch.setattr(Transcriber, "load", 터지는_로딩)
+    monkeypatch.setattr(Synthesizer, "load", 아무것도_안_하는_로딩)
 
     # lifespan을 실제로 태운다 — 기동이 예외로 무너지지 않아야 한다.
     with TestClient(app) as client:
@@ -75,7 +54,9 @@ def _대역_정리():
 
 
 def make_client(
-    transcriber: StubTranscriber, settings: Settings | None = None
+    transcriber: StubTranscriber,
+    settings: Settings | None = None,
+    synthesizer: StubSynthesizer | None = None,
 ) -> TestClient:
     """의존성만 대역으로 갈아끼운 테스트 클라이언트.
 
@@ -86,6 +67,9 @@ def make_client(
     """
     app.dependency_overrides[get_settings] = lambda: settings or load_settings()
     app.dependency_overrides[get_transcriber] = lambda: transcriber
+    # 헬스 체크가 합성기까지 보므로 대역을 함께 꽂는다. 꽂지 않으면 app.state를 타서
+    # 다른 테스트가 남긴 상태에 의존하게 된다.
+    app.dependency_overrides[get_synthesizer] = lambda: synthesizer or StubSynthesizer()
     return TestClient(app)
 
 
