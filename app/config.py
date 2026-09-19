@@ -31,6 +31,25 @@ def _env_int(key: str, default: int) -> int:
         raise ValueError(f"환경변수 {key}는 정수여야 하는데 '{raw}'이(가) 들어왔다") from exc
 
 
+def _env_float(key: str, default: float) -> float:
+    """실수 환경변수. 숫자가 아니면 설정 실수이므로 조용히 넘기지 않고 터뜨린다."""
+    raw = _env(key, str(default))
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"환경변수 {key}는 실수여야 하는데 '{raw}'이(가) 들어왔다") from exc
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    """참/거짓 환경변수. 1·true·yes·on을 참으로 본다(대소문자 무시)."""
+    raw = _env(key, "true" if default else "false").lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"환경변수 {key}는 true/false여야 하는데 '{raw}'이(가) 들어왔다")
+
+
 def detect_device() -> str:
     """CUDA를 쓸 수 있으면 'cuda', 아니면 'cpu'.
 
@@ -54,6 +73,13 @@ class Settings:
     # --- HTTP ---
     host: str
     port: int
+
+    # --- TTS(MeloTTS) ---
+    # ADR-0009: TTS는 CPU에 둔다. 장치 설정을 두지 않는 이유는 그것이 선택지가 아니라
+    # 자원 배치 결정이기 때문이다 — GPU는 STT와 `추론 서비스` 몫이다.
+    tts_warmup: bool
+    tts_speed: float
+    max_text_chars: int
 
     # --- STT(faster-whisper) ---
     stt_model: str
@@ -92,4 +118,7 @@ def load_settings() -> Settings:
             _env("JINSANGSTOP_STT_DOWNLOAD_ROOT", str(REPO_ROOT / "models"))
         ),
         max_audio_bytes=_env_int("JINSANGSTOP_MAX_AUDIO_BYTES", 25 * 1024 * 1024),
+        tts_warmup=_env_bool("JINSANGSTOP_TTS_WARMUP", True),
+        tts_speed=_env_float("JINSANGSTOP_TTS_SPEED", 1.0),
+        max_text_chars=_env_int("JINSANGSTOP_MAX_TEXT_CHARS", 500),
     )
