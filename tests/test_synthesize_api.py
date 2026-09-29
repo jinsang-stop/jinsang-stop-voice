@@ -80,6 +80,33 @@ def test_speed를_주면_그것을_쓴다():
     assert 대역.received_speed == pytest.approx(0.8)
 
 
+@pytest.mark.parametrize("speed", [0, -1.0])
+def test_speed가_0_이하면_400이다(speed):
+    """MeloTTS 안에서 터지게 두면 503 `TTS_FAILED`로 나가 환경 문제로 오진된다."""
+    대역 = StubSynthesizer()
+    client = make_client(대역)
+    response = client.post("/synthesize", json={"text": "안녕하세요.", "speed": speed})
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INVALID_SPEED"
+    assert 대역.received_text is None
+
+
+def test_speed가_NaN이면_400이다():
+    """파이썬 json은 NaN 리터럴을 받아들이므로 0 이하 검사만으로는 새어 나간다."""
+    대역 = StubSynthesizer()
+    client = make_client(대역)
+    response = client.post(
+        "/synthesize",
+        content='{"text": "안녕하세요.", "speed": NaN}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INVALID_SPEED"
+    assert 대역.received_text is None
+
+
 def test_텍스트가_비면_400이다():
     대역 = StubSynthesizer()
     client = make_client(대역)

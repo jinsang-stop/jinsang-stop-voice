@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from fastapi import APIRouter, Depends, Response, status
 from fastapi.concurrency import run_in_threadpool
@@ -52,7 +53,10 @@ def _error(status_code: int, error_code: str, message: str) -> JSONResponse:
         },
         status.HTTP_400_BAD_REQUEST: {
             "model": ErrorResponse,
-            "description": "텍스트가 비었거나 공백뿐이다",
+            "description": (
+                "텍스트가 비었거나 공백뿐이다(`EMPTY_TEXT`),"
+                " 또는 speed가 0 이하이거나 유한한 수가 아니다(`INVALID_SPEED`)"
+            ),
         },
         status.HTTP_413_CONTENT_TOO_LARGE: {
             "model": ErrorResponse,
@@ -97,6 +101,14 @@ async def synthesize(
         )
 
     speed = 요청.speed if 요청.speed is not None else settings.tts_speed
+    # MeloTTS는 speed의 역수로 발화 길이를 정하므로 0·음수·NaN은 합성기 안에서 터진다.
+    # 그대로 내려보내면 보낸 쪽 실수가 503 `TTS_FAILED`(이쪽 환경 문제)로 오진되므로 먼저 거른다.
+    if not math.isfinite(speed) or speed <= 0:
+        return _error(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_SPEED",
+            f"speed는 0보다 큰 유한한 수여야 하는데 {speed}이(가) 들어왔다.",
+        )
 
     try:
         # 합성은 CPU를 오래 붙잡으므로 이벤트 루프를 막지 않도록 스레드로 넘긴다.

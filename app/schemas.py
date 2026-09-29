@@ -54,7 +54,8 @@ class SynthesisRequest(BaseModel):
     speed: float | None = Field(
         default=None,
         description=(
-            "말하기 속도. 생략하면 `JINSANGSTOP_TTS_SPEED`(기본 1.0)를 쓴다."
+            "말하기 속도. 0보다 커야 하며 아니면 400 `INVALID_SPEED`다."
+            " 생략하면 `JINSANGSTOP_TTS_SPEED`(기본 1.0)를 쓴다."
             " MeloTTS가 노출하는 조절 값은 speed와 speaker_id뿐이므로 `민원인`의 분노 어조는"
             " 음성이 아니라 대사 자체로 표현한다(ADR-0008)"
         ),
