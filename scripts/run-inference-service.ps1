@@ -30,7 +30,7 @@ try {
         return $값
     }
 
-    $llamaDir  = 환경값 'JINSANGSTOP_LLAMA_DIR'       (Join-Path $저장소루트 'tools\llama-b11026')
+    $llamaDir  = 환경값 'JINSANGSTOP_LLAMA_DIR'       (Join-Path $저장소루트 'tools\llama-b11330')
     $모델      = 환경값 'JINSANGSTOP_LLAMA_MODEL'     (Join-Path $저장소루트 'models\Qwen3.6-35B-A3B-Q4_K_M.gguf')
     $호스트    = 환경값 'JINSANGSTOP_LLAMA_HOST'      '127.0.0.1'
     $포트      = 환경값 'JINSANGSTOP_LLAMA_PORT'      '8081'
