@@ -50,16 +50,52 @@ def _env_bool(key: str, default: bool) -> bool:
     raise ValueError(f"환경변수 {key}는 true/false여야 하는데 '{raw}'이(가) 들어왔다")
 
 
+def register_cuda_libraries() -> None:
+    """pip로 설치한 cuBLAS·cuDNN(nvidia-*-cu12)의 DLL 폴더를 찾을 수 있게 한다.
+
+    윈도에서 ctranslate2는 `cublas64_12.dll`을 전사 첫 호출 때에야 PATH에서 찾는다.
+    휠은 그것을 site-packages/nvidia/*/bin에 두지만 PATH에는 넣지 않으므로, 그대로 두면
+    시연 장비에서 모델 로딩과 /health는 성공하고 **모든 전사가 503 `STT_FAILED`**가 된다(확인함).
+    CUDA 툴킷을 따로 설치하지 않아도 되도록 여기서 경로를 잡는다. 여러 번 불러도 된다.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import nvidia
+    except ImportError:
+        return
+    for package_root in nvidia.__path__:
+        for bin_dir in Path(package_root).glob("*/bin"):
+            path = str(bin_dir)
+            if path not in os.environ.get("PATH", "").split(os.pathsep):
+                os.environ["PATH"] = path + os.pathsep + os.environ.get("PATH", "")
+                os.add_dll_directory(path)
+
+
+def _cublas_loadable() -> bool:
+    """ctranslate2가 전사 때 찾을 cuBLAS를 지금 실제로 올릴 수 있는지."""
+    if os.name != "nt":
+        return True
+    import ctypes
+
+    try:
+        ctypes.WinDLL("cublas64_12.dll")
+    except OSError:
+        return False
+    return True
+
+
 def detect_device() -> str:
     """CUDA를 쓸 수 있으면 'cuda', 아니면 'cpu'.
 
-    ctranslate2가 실제로 인식하는 CUDA 장치 수로 판단한다. NVIDIA 드라이버나
-    cuBLAS가 없는 개발용 노트북에서는 0이 나오므로 자동으로 CPU로 떨어진다.
+    ctranslate2가 인식하는 CUDA 장치가 있고 cuBLAS까지 실제로 올라올 때만 'cuda'다.
+    장치 수만 보면 GPU는 있는데 cuBLAS가 없는 기계에서 'cuda'를 골라 놓고 전사마다 실패한다.
     """
+    register_cuda_libraries()
     try:
         import ctranslate2
 
-        if ctranslate2.get_cuda_device_count() > 0:
+        if ctranslate2.get_cuda_device_count() > 0 and _cublas_loadable():
             return "cuda"
     except Exception:  # noqa: BLE001 — 장치 탐지 실패는 CPU 폴백으로 충분하다
         pass
