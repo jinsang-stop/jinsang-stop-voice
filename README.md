@@ -23,6 +23,12 @@
 - C++ 빌드 도구도 **필요 없다.** 아래 설치 절차대로 하면 전부 미리 빌드된 휠로 깔린다.
 - 전사는 GPU가 있으면 쓰고 없으면 CPU로 떨어진다. **합성은 언제나 CPU다**(ADR-0009) —
   시연 장비의 VRAM 8GB는 전사와 `추론 서비스`가 나눠 쓴다.
+- CUDA 툴킷 설치도 **필요 없다.** GPU 전사가 찾는 cuBLAS·cuDNN(CUDA 12)은 `requirements.txt`의
+  `nvidia-*-cu12` 휠로 깔리고, 서비스가 기동할 때 그 DLL 경로를 스스로 잡는다(`app/config.py`).
+  NVIDIA 드라이버만 있으면 된다(확인 환경: 595.95).
+- **WSL은 쓰지 않는다.** 두 서비스 모두 윈도에서 네이티브로 돈다. `추론 서비스`의 35B 모델이 VRAM 8GB에
+  들어가지 않는 것은 llama.cpp가 전문가 가중치를 RAM에 두는 것으로 풀고(ADR-0009), 이것은 윈도 CUDA
+  빌드에서 그대로 된다 — 맥의 통합 메모리가 필요한 구성이 아니다.
 
 ## 설치
 
@@ -38,6 +44,12 @@ pip install --no-deps git+https://github.com/myshell-ai/MeloTTS.git
 소스 빌드로 떨어지고(빌드 도구가 필요해진다) 전사가 쓰는 numpy 2.x도 함께 끌어내린다.
 그래서 코드만 받고, 실제로 import 되는 것들은 `requirements.txt`에 최신 버전으로 고정해 두었다.
 확인한 조합에서 MeloTTS는 `transformers 5.17.0` · `numpy 2.5.3`과 문제없이 돈다.
+
+**`numba`를 `0.67.0`으로 고정한 것도 실수가 아니다.** librosa가 끌고 오는 의존성인데, 고정하지 않으면
+pip가 갓 나온 버전을 깐다. 윈도 11 **스마트 앱 컨트롤**은 평판이 쌓이지 않은 새 바이너리를 막으므로,
+2026-09-30에 나온 0.68.0이 깔린 기계에서는 `_typeconv` DLL이 "애플리케이션 제어 정책에서 이 파일을
+차단했습니다"로 막혀 MeloTTS가 import되지 않았다(확인함). 스마트 앱 컨트롤을 끄지 않는다 — 버전을
+고정해 푼다. 같은 메시지가 다른 패키지에서 나오면 그 패키지도 한 단계 이전 버전으로 고정한다.
 
 환경변수를 바꿀 일이 있으면 `.env.example`을 참고한다. 모든 값에 기본값이 있어 아무것도 설정하지 않아도 뜬다.
 
@@ -209,10 +221,19 @@ x-sample-rate: 44100
    빌드를 받아 `tools/llama-<빌드번호>/`에 푼다.
    - 시연 장비(RTX 5060 Ti)는 **CUDA 빌드**를 쓴다: `llama-<빌드>-bin-win-cuda-13.4-x64.zip`.
      CUDA 툴킷이 설치돼 있지 않으면 같은 릴리스의 `cudart-llama-bin-win-cuda-13.4-x64.zip`도 함께 푼다.
+   - 실행 스크립트의 기본 경로는 `tools/llama-b11330/`이다. 시연 장비에서 확인한 빌드이고,
+     드라이버가 CUDA 13.2까지만 표시해도(595.95) 13.4 빌드가 GPU를 잡는다
+     (`llama-server --list-devices` → `CUDA0: NVIDIA GeForce RTX 5060 Ti`).
+     다른 빌드를 쓰면 `JINSANGSTOP_LLAMA_DIR`로 경로를 준다.
    - Vulkan 백엔드는 쓰지 않는다(ADR-0009).
 2. **모델 가중치** — Qwen3.6-35B-A3B의 GGUF를 `models/`에 둔다. 공식 가중치에서 양자화한 것만 쓰고,
    검열이 제거된(abliterated·uncensored) 변형은 쓰지 않는다(ADR-0009).
    Q4_K_M이 약 21GB이므로 디스크와 RAM 여유를 먼저 확인한다.
+   시연 장비에서는 [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)의
+   `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`(22,134,528,992바이트)를 스크립트 기본 이름
+   `models/Qwen3.6-35B-A3B-Q4_K_M.gguf`로 받아 썼다. 큰 파일이라 내려받기가 중간에 끊겨도 오류 없이
+   끝나는 경우가 있었다 — 크기와 SHA-256을 허브 값과 맞춰 본 뒤 쓴다. 덜 받은 파일은 기동할 때
+   `data is not within the file bounds`로 실패한다.
 
 ### 실행
 
@@ -233,6 +254,9 @@ ADR-0009와 PRD-v2가 "받은 `llama-server` 버전에서 확인한다"고 남�
 여기서 보는 것은 API가 그 인자를 받아들이는지이고 그건 백엔드 종류가 아니라 버전의 함수이므로,
 시연 장비에서는 **같은 태그의 CUDA 빌드**를 쓰면 같은 결과가 나온다.
 
+이후 시연 장비에서 **CUDA 빌드 `b11330`(`0.5.0-dev`, 커밋 `c061df198`)에 Qwen3.6-35B-A3B Q4_K_M**을 올려
+`id_slot`(0·1) · `chat_template_kwargs` · 한글 속성명 JSON 스키마를 다시 확인했다. 결과는 아래 표와 같다.
+
 | 항목 | 결과 | 확인 방법 |
 |---|---|---|
 | `id_slot` | **된다** | `/completion` 응답에 `id_slot: 1`이 그대로 돌아오고, 서버 로그에 `selected slot by id (1)`이 찍힌다 |
@@ -240,7 +264,7 @@ ADR-0009와 PRD-v2가 "받은 `llama-server` 버전에서 확인한다"고 남�
 | JSON 스키마 응답 형식 | **된다** | `response_format: json_schema`에 한글 속성명(`대사`·`진정함`)과 `strict: true`를 주었더니 스키마대로 파싱되는 JSON만 나왔다 |
 | 슬롯당 컨텍스트 | `-c` ÷ `-np` | `-c 16384 -np 2`로 띄우면 `n_ctx_slot = 8192`다. 슬롯당 값을 직접 주려면 `--kv-unified-per-slot`이 따로 있다 |
 
-주의할 점 두 가지를 함께 확인했다.
+주의할 점 세 가지를 함께 확인했다.
 
 - **`id_slot` 범위를 검사하지 않는다.** 슬롯이 2개인데 `id_slot: 99`를 보내도 오류가 아니라
   200이 돌아오고 로그에는 `selected slot by id (99)`가 찍히지만 실제로는 다른 슬롯이 쓰인다.
@@ -249,6 +273,10 @@ ADR-0009와 PRD-v2가 "받은 `llama-server` 버전에서 확인한다"고 남�
 - **CORS 기본값이 `*`다.** llama-server가 기동할 때 스스로 위험하다고 경고한다. 루프백 바인딩이
   외부는 막지만 시연 장비 브라우저에서 열린 아무 페이지나 요청을 보낼 수 있으므로, 실행 스크립트에
   `--cors-origins localhost`를 넣어 좁혀 두었다. Spring은 서버에서 부르므로 `Origin`이 없어 영향이 없다.
+- **JSON 스키마는 모양만 강제한다.** 시스템 프롬프트에 출력 형식을 적지 않은 연기 요청에서
+  temperature 0.8 · seed 7이 `{"대사": "},{", "진정함": false}`를 냈다 — 스키마는 통과하지만 대사가 아니다.
+  프롬프트에 `{"대사", "진정함"} JSON으로만 답한다`를 적자 같은 조건에서 정상 대사가 나왔다.
+  백엔드는 연기 프롬프트에 출력 형식을 함께 적고, `출력 검사`에서 대사 내용도 본다.
 
 추론 모드는 요청마다 `chat_template_kwargs`로 끄는 것 외에 서버 인자 `--reasoning off`로도 끌 수 있다.
 어느 쪽을 쓸지는 백엔드와 맞춘다.
@@ -318,7 +346,7 @@ curl -X POST http://127.0.0.1:8020/transcribe --data-binary @big.bin -w "%{size_
 
 ## 측정값 (참고)
 
-**이 값들은 시연 장비의 것이 아니다.** 측정한 기계는 Intel Core Ultra 5 125H · RAM 16GB ·
+시연 장비 실측은 이 절 끝에 있다. 바로 아래 값은 **시연 장비의 것이 아니다.** 측정한 기계는 Intel Core Ultra 5 125H · RAM 16GB ·
 NVIDIA GPU 없음(Intel Arc 내장)이고, ADR-0009가 말하는 시연 장비는 RTX 5060 Ti · RAM 64GB ·
 Core Ultra 7이다. 전사는 GPU가 없어 CPU `int8`로 떨어졌고, 합성은 어차피 CPU다.
 
@@ -343,8 +371,34 @@ Core Ultra 7이다. 전사는 GPU가 없어 CPU `int8`로 떨어졌고, 합성�
 전사와 합성 모델을 모두 올린 프로세스의 RSS는 약 2.35GB다. ADR-0009 자원 배치표에서
 MeloTTS는 CPU 칸에 있으므로 이 값은 VRAM이 아니라 RAM을 쓴다.
 
-**GPU 메모리는 아직 측정하지 못했다.** 이슈 #1·#2의 GPU 관련 완료 조건은 비워 두었다.
-전사 모델과 `추론 서비스`를 함께 올린 실측값은 시연 장비에서 재서 이슈에 댓글로 남긴다.
+### 시연 장비 실측 (2026-10-02)
+
+RTX 5060 Ti 8GB · RAM 64GB · Core Ultra 7 265 · Windows 11 · 드라이버 595.95.
+`음성 서비스`(기본값 그대로 — 전사 `small` · `cuda` · `float16`)와 `추론 서비스`(스크립트 기본값 —
+`b11330` CUDA 빌드 · Qwen3.6-35B-A3B Q4_K_M · `--n-cpu-moe 99`)를 **함께 띄운 상태**에서 쟀다.
+
+| 항목 | 값 |
+|---|---|
+| VRAM 합계(OS 화면 포함) | 약 4.4GB / 8GB |
+| ㄴ 전사 모델 | 약 0.75GB (계획값 1.5GB) |
+| RAM 합계(시스템 전체) | 약 34GB / 64GB |
+| `추론 서비스` 기동 | 약 3초 (가중치는 mmap) |
+| 생성 속도 | 초당 약 47토큰 |
+| 프롬프트 처리 — 캐시 없음 | 2,915토큰에 9.3초 (초당 약 315토큰) |
+| 프롬프트 처리 — 같은 슬롯의 다음 턴 | 27토큰에 0.26초 |
+
+한 `발화 턴` — 직원 음성 전사 → 연기 요청(슬롯 0, 캐시 예열 뒤) → 대사 합성:
+
+| 전사 | 대사 생성 | 합성(음성 약 7초) | 합계 |
+|---|---|---|---|
+| 0.6~0.9초 | 1.1~1.6초 | 1.4초 | **3.1~3.7초** |
+
+- 캐시가 없으면 긴 카드 프롬프트 처리만 10초 가까이 걸린다. ADR-0009의 "세션 시작 시 카드·강도 프롬프트
+  캐시 예열"이 턴 지연을 지키는 전제다.
+- `--n-cpu-moe 32`로 전문가 일부를 GPU에 올리면 VRAM이 7.7GB까지 차는데 생성 속도는 5~10%만 오른다.
+  KV 캐시가 세션 내내 커지는 것을 생각하면 여유가 없으므로 **기본값 99를 유지한다.**
+- 위 VRAM은 NVIDIA 제어판의 CUDA 시스템 메모리 폴백을 끈("폴백 안 함 우선") 상태를 전제로 한다(ADR-0009).
+  NVIDIA 제어판 → 3D 설정 관리 → 전역 설정 → `CUDA - 시스템 메모리 폴백 정책` → `폴백 안 함 우선`.
 
 ## 설정
 
@@ -355,7 +409,7 @@ MeloTTS는 CPU 칸에 있으므로 이 값은 VRAM이 아니라 RAM을 쓴다.
 | `JINSANGSTOP_VOICE_HOST` | `127.0.0.1` |
 | `JINSANGSTOP_VOICE_PORT` | `8000` |
 | `JINSANGSTOP_STT_MODEL` | `small` |
-| `JINSANGSTOP_STT_DEVICE` | `auto` (CUDA 있으면 `cuda`, 없으면 `cpu`) |
+| `JINSANGSTOP_STT_DEVICE` | `auto` (CUDA 장치가 있고 cuBLAS가 올라오면 `cuda`, 아니면 `cpu`) |
 | `JINSANGSTOP_STT_COMPUTE_TYPE` | `cuda`면 `float16`, `cpu`면 `int8` |
 | `JINSANGSTOP_STT_BEAM_SIZE` | `5` |
 | `JINSANGSTOP_STT_DOWNLOAD_ROOT` | `./models` |
