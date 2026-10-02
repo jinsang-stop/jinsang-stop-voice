@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import av
 from faster_whisper import WhisperModel
 
-from app.config import Settings
+from app.config import Settings, register_cuda_libraries
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,8 @@ class Transcriber:
     def load(self) -> None:
         """모델을 올린다. 가중치가 없으면 이때 내려받는다."""
         settings = self._settings
+        # JINSANGSTOP_STT_DEVICE=cuda로 직접 준 경우 detect_device를 거치지 않으므로 여기서도 잡는다.
+        register_cuda_libraries()
         settings.stt_download_root.mkdir(parents=True, exist_ok=True)
         logger.info(
             "faster-whisper 모델 로딩 — model=%s device=%s compute_type=%s",

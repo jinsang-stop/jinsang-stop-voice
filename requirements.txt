@@ -11,6 +11,12 @@ faster-whisper==1.2.1
 # app/stt.py가 av.FFmpegError를 직접 잡으므로 여기에도 명시해 고정한다.
 av==18.1.0
 
+# GPU 전사용 cuBLAS·cuDNN(CUDA 12). ctranslate2 4.8은 CUDA 12 라이브러리를 찾는다.
+# CUDA 툴킷을 깔지 않아도 되도록 휠로 받고 app/config.py가 DLL 경로를 잡는다.
+# GPU가 없는 기계에서는 쓰이지 않을 뿐 해가 없다.
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.27.0.42
+
 # --- TTS(MeloTTS) ---
 # MeloTTS 0.1.2의 setup.py는 numpy==1.26.4 · transformers==4.27.4처럼 오래된 버전을 못박아
 # 두었는데, 그 조합은 Python 3.13용 휠이 없어 소스 빌드로 떨어지고 STT가 쓰는 numpy 2.x도
